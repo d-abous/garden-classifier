@@ -1,0 +1,23 @@
+# Render Blueprint: deploys the garden page and the classifier backend together.
+# In Render: New > Blueprint, pick this repo, then enter REPLICATE_API_TOKEN when prompted.
+services:
+  # Flask classifier backend (calls Replicate's CLIP model).
+  - type: web
+    name: garden-classifier-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: REPLICATE_API_TOKEN
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: https://danas-garden.onrender.com
+
+  # Static garden page (index.html, app.js, styles.css, ...). No build step.
+  - type: web
+    name: danas-garden
+    runtime: static
+    buildCommand: ""
+    staticPublishPath: .

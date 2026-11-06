@@ -1,0 +1,541 @@
+/* ── Design tokens ──────────────────────────────────────────────────────── */
+:root {
+  /* Garden width: up to 800px, but never taller than the screen below the title
+     (the image has ~8% transparent space under the mound's shadow). */
+  --garden-max: min(800px, calc((100vh - 110px) * 1327 / 1186));
+  --bg:        #fffff3;
+  --bg-soft:   #faf6ea;
+  --ink:       #2a3f2d;
+  --muted:     #637560;
+  --line:      #2f3d4f;
+  --green-1:   #9bcc4d;
+  --green-2:   #7fb93d;
+  --green-3:   #4b6f1f;
+  --green-4:   #334b1d;
+  --shadow:    rgba(36, 45, 23, 0.18);
+  --red:       #f27f6a;
+  --orange:    #d85a86;
+  --yellow:    #ffd35a;
+  --pink:      #b62b36;
+  --leaf:      #4d8c43;
+  --card:      rgba(255, 252, 243, 0.82);
+  --card-border: rgba(45, 70, 48, 0.09);
+  --radius-card: 28px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: 'DM Sans', 'Gill Sans', 'Trebuchet MS', sans-serif;
+  font-weight: 400;
+  color: var(--ink);
+  background: var(--bg);
+}
+
+button, a {
+  font: inherit;
+}
+
+/* ── Layout ─────────────────────────────────────────────────────────────── */
+.page-shell {
+  /* Side margins grow with the window, so nothing hugs the edge on mid-size laptops. */
+  width: min(1180px, calc(100% - 2 * clamp(20px, 7vw, 110px)));
+  margin: 0 auto;
+  padding: 20px 0 24px;
+}
+
+.experience-layout {
+  display: grid;
+  /* Garden and canvas sit together as one centered group, with room on both sides. */
+  grid-template-columns: minmax(0, var(--garden-max)) 300px;
+  justify-content: center;
+  gap: clamp(32px, 4vw, 64px);
+  align-items: center;
+}
+
+/* ── Typography ─────────────────────────────────────────────────────────── */
+.eyebrow,
+.panel-kicker,
+.stage-label {
+  margin: 0;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  font-size: 0.73rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.panel-header h2,
+.gallery-header h2 {
+  margin: 5px 0 0;
+  font-family: 'DM Serif Display', Georgia, 'Times New Roman', serif;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+/* Same face as the nav pills. */
+.stage-header h1 {
+  margin: 0;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 700;
+  font-size: clamp(1.4rem, 2.8vw, 2rem);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  text-align: center;
+}
+.panel-header h2 { font-size: 1.2rem; line-height: 1.3; text-align: center; }
+
+/* Classifier messages type into the panel title, then float gently. */
+.typed-letter { visibility: hidden; white-space: pre-wrap; }
+.typed-letter.is-typed { visibility: visible; }
+
+.panel-header h2.is-message {
+  animation: message-float 2.4s ease-in-out infinite;
+}
+
+@keyframes message-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-header h2.is-message { animation: none; }
+}
+.gallery-header h2 { font-size: 1.45rem; }
+
+/* ── Cards ───────────────────────────────────────────────────────────────── */
+.garden-stage {
+  padding: 20px 0;
+  position: relative;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.stage-header,
+.gallery-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  /* Match the palette column + gap in .panel-body so the title centers over the canvas. */
+  padding-left: 54px;
+}
+
+.stage-header {
+  position: relative;
+  z-index: 20;
+  justify-content: center;
+  margin: 56px 0 14px;
+  padding-bottom: 10px;
+}
+
+.garden-stage-panel {
+  display: block;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Garden island (SVG) ────────────────────────────────────────────────── */
+.garden-island {
+  position: relative;
+  /* The mound and its shadow are centered in the image, so plain auto margins center them.
+     Flowers are positioned and sized in % of this box, so they shrink along with it. */
+  width: 100%;
+  max-width: var(--garden-max);
+  margin-inline: auto;
+  /* Same proportions as garden-mound-final.png, so the flower layer lines up with the mound. */
+  aspect-ratio: 1327 / 1186;
+  /* Drifts gently up and down, like the messages above the canvas (mound and flowers together). */
+  animation: garden-float 4.5s ease-in-out infinite;
+}
+
+@keyframes garden-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+
+.island-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: 38% center;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* ── Planted flowers overlay ────────────────────────────────────────────── */
+.planted-flowers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.planted-flower {
+  position: absolute;
+  /* --flower-size is a % of the garden's width, so flowers scale with the mound. */
+  width: var(--flower-size, 10%);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%) rotate(var(--flower-tilt, 0deg));
+  transform-origin: center center;
+  animation: flower-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.planted-flower img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 100%;
+  height: auto;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 8px 14px rgba(39, 55, 25, 0.22));
+}
+
+@keyframes flower-pop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.68) rotate(var(--flower-tilt, 0deg));
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1) rotate(var(--flower-tilt, 0deg));
+  }
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+/* Plant / See flower gallery: same look and font as the nav pills. */
+.pill-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 18px;
+  border: 0;
+  border-radius: 999px;
+  background-color: #ece3cb;
+  color: #0c0908;
+  font: 700 0.875rem/1.6 'DM Sans', sans-serif;
+  cursor: pointer;
+  transition: background-color 250ms;
+}
+
+.pill-button:hover { background-color: #d4c7a6; }
+.pill-button:focus-visible { outline: 2px solid #0c0908; outline-offset: 3px; }
+
+/* Plant: a sprout whose two leaves start small and tucked in, then grow and open outwards on hover. */
+.pill-button--plant { padding: 5px 16px 5px 10px; }
+
+.sprout-leaf {
+  transform-box: view-box;
+  transition: transform 460ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* The full ink wobble turns this small sprout into a blob, so it gets thinner lines and only a
+   gentle wobble — a little hand-drawn while staying clean. */
+.nav-icon.sprout-icon { width: 26px; height: 26px; stroke-width: 1.7; filter: url(#hand-drawn-light); }
+.sprout-vein { stroke-width: 1.1; }
+
+.sprout-leaf--left  { transform-origin: 15.8px 19px;   transform: rotate(30deg) scale(0.55); }
+.sprout-leaf--right { transform-origin: 17.6px 13.4px; transform: rotate(-28deg) scale(0.55); }
+
+.pill-button--plant:hover .sprout-leaf,
+.pill-button--plant:focus-visible .sprout-leaf { transform: none; }
+
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 18px;
+  justify-content: center;
+}
+
+.hidden { display: none; }
+
+/* ── Control panel ───────────────────────────────────────────────────────── */
+.control-panel {
+  width: 100%;
+  /* Keeps the drawing canvas a modest square (~246px). */
+  max-width: 300px;
+  justify-self: center;
+  padding: 20px 0;
+}
+
+.panel-body {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  margin: 14px 0;
+}
+
+/* ── Colour palette ──────────────────────────────────────────────────────── */
+.palette {
+  display: grid;
+  gap: 9px;
+}
+
+.swatch {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2.5px solid rgba(45, 61, 79, 0.12);
+  cursor: pointer;
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.swatch:hover,
+.swatch:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(47, 61, 79, 0.16);
+}
+
+.swatch.is-active {
+  border-color: rgba(45, 61, 79, 0.7);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.85), 0 4px 10px rgba(0, 0, 0, 0.14);
+}
+
+.red    { background: var(--red); }
+.orange { background: var(--orange); }
+.yellow { background: var(--yellow); }
+.pink   { background: var(--pink); }
+.green  { background: var(--leaf); }
+
+/* ── Drawing canvas card ─────────────────────────────────────────────────── */
+.canvas-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 120px;
+}
+
+.drawing-canvas {
+  display: block;
+  flex: 1;
+  width: 100%;
+  aspect-ratio: 1;
+  height: auto;
+  min-height: 180px;
+  border-radius: 18px;
+  border: 1.5px dashed rgba(47, 61, 79, 0.28);
+  /* Plain page colour with the faint drawing grid; no fade. */
+  background:
+    repeating-linear-gradient(90deg,  transparent 0 26px, rgba(47, 61, 79, 0.035) 26px 27px),
+    repeating-linear-gradient(180deg, transparent 0 26px, rgba(47, 61, 79, 0.035) 26px 27px),
+    var(--bg);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.reset-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: color 140ms ease, transform 300ms ease;
+}
+
+.reset-button:hover,
+.reset-button:focus-visible {
+  color: var(--ink);
+  transform: rotate(360deg);
+}
+
+/* ── Gallery modal ───────────────────────────────────────────────────────── */
+.gallery-modal {
+  width: min(920px, calc(100% - 32px));
+  border: 0;
+  border-radius: 28px;
+  padding: 26px;
+  background: var(--bg);
+  box-shadow:
+    0 0 0 1px rgba(45, 70, 48, 0.07),
+    0 28px 70px rgba(36, 43, 31, 0.24);
+}
+
+.gallery-modal::backdrop {
+  background: rgba(30, 36, 24, 0.38);
+  backdrop-filter: blur(5px);
+}
+
+.gallery-stats {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+/* Plain grid of every past drawing. */
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 16px;
+  margin-top: 22px;
+}
+
+.gallery-empty { grid-column: 1 / -1; margin: 24px 0; color: var(--muted); text-align: center; }
+
+.gallery-flower-image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+}
+
+.mini-flower {
+  width: 72px;
+  height: 72px;
+  margin: 12px auto 18px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at center, rgba(255, 239, 140, 0.95) 0 16%, transparent 18%),
+    radial-gradient(circle at top,    #e55f46 0 24%, transparent 26%),
+    radial-gradient(circle at bottom, #e55f46 0 24%, transparent 26%),
+    radial-gradient(circle at left,   #f2a6bd 0 24%, transparent 26%),
+    radial-gradient(circle at right,  #f79a34 0 24%, transparent 26%);
+}
+
+/* ── Hero ────────────────────────────────────────────────────────────────── */
+.hero { display: grid; gap: 16px; }
+
+/* ── Pills (the gallery's Back button) ──────────────────────────────────── */
+.svg-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+.nav-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 15px 5px 9px;
+  border: 0;
+  border-radius: 999px;
+  background-color: #ece3cb;
+  color: #0c0908;
+  font: 700 0.875rem/1.6 'DM Sans', sans-serif;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 250ms;
+}
+
+.nav-pill:hover { background-color: #d4c7a6; }
+.nav-pill:focus-visible { outline: 2px solid #0c0908; outline-offset: 3px; }
+
+.nav-icon {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  overflow: visible;
+  fill: none;
+  stroke: #0c0908;
+  stroke-width: 2.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: url(#hand-drawn);
+}
+
+/* Back: hidden at the top of the page, slides in once you've scrolled away. */
+.nav-pill--back { display: none; }
+.nav-pill--back.is-visible {
+  display: inline-flex;
+  animation: back-pill-in 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes back-pill-in {
+  from { opacity: 0; transform: translateX(-4px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+.back-arrow {
+  position: relative;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+}
+
+/* The arrow's SVG is anchored at the icon's right edge and reaches far to the left,
+   so the unwound line has room; app.js morphs the path between the two shapes. */
+.back-arrow__svg {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: 220px;
+  height: 32px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .garden-island { animation: none; }
+  .sprout-leaf { transition: none; }
+  .nav-pill--back.is-visible { animation: none; }
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 1180px) {
+  .experience-layout {
+    grid-template-columns: minmax(0, 800px);
+    gap: 8px;
+  }
+  .control-panel {
+    position: relative;
+    top: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .page-shell {
+    width: min(100% - 20px, 1200px);
+    padding-top: 14px;
+  }
+  .panel-body {
+    grid-template-columns: 1fr;
+  }
+  .gallery-grid { grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); }
+  .panel-header { padding-left: 0; }
+  /* All five swatches fit even on small phones, so no scrolling: a scroll box would crop
+     the selected swatch's ring and the hover lift. */
+  .palette {
+    grid-auto-flow: column;
+    grid-auto-columns: 34px;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+    padding: 4px 0 6px;
+  }
+  .canvas-card   { min-height: 240px; }
+}
+
+/* Phones: pills show just their icons (names stay available to screen readers). */
+@media (max-width: 600px) {
+  .nav-pill { padding: 5px 8px; }
+  .nav-pill__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
