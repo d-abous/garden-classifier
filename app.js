@@ -1,6 +1,5 @@
 const MAX_VISIBLE_GARDEN_FLOWERS = 25;
 const RECENT_GARDEN_FLOWER_LIMIT = 25;
-const SUPABASE_FLOWERS_BUCKET = "flower-images";
 const SUPABASE_CONFIG = window.GARDEN_SUPABASE_CONFIG ?? {
   url: "YOUR_SUPABASE_URL",
   anonKey: "YOUR_SUPABASE_ANON_KEY",
@@ -23,7 +22,6 @@ const plantFlowerButton = document.querySelector("[data-plant-flower]");
 const plantedFlowersLayer = document.querySelector("[data-planted-flowers]");
 const galleryGrid = document.querySelector("[data-gallery-grid]");
 const galleryStats = document.querySelector("[data-gallery-stats]");
-const classifier = window.GardenClassifier;
 const supabaseClient = createSupabaseClient();
 
 let activeBrushColor = "#f27f6a";
@@ -233,25 +231,6 @@ function createFlowerImage() {
   );
 
   return previewCanvas.toDataURL("image/png");
-}
-
-function dataUrlToBlob(dataUrl) {
-  const [header, payload] = dataUrl.split(",");
-  const mimeMatch = header.match(/data:(.*?);base64/);
-
-  if (!payload || !mimeMatch) {
-    return null;
-  }
-
-  const mimeType = mimeMatch[1];
-  const binary = atob(payload);
-  const bytes = new Uint8Array(binary.length);
-
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-
-  return new Blob([bytes], { type: mimeType });
 }
 
 function clearCanvas() {
@@ -507,76 +486,6 @@ function createLocalFlowerRecord(imageUrl) {
   };
 }
 
-// folder is "pending" for the temporary copy the classifier looks at, "flowers" once accepted.
-async function uploadFlowerImage(flowerRecord, folder = "flowers") {
-  if (!supabaseClient) {
-    return flowerRecord.imageUrl;
-  }
-
-  const imageBlob = dataUrlToBlob(flowerRecord.imageUrl);
-
-  if (!imageBlob) {
-    throw new Error("Could not convert the flower sketch into an upload.");
-  }
-
-  const filePath = `${folder}/${flowerRecord.id}.png`;
-  const { error: uploadError } = await supabaseClient.storage
-    .from(SUPABASE_FLOWERS_BUCKET)
-    .upload(filePath, imageBlob, {
-      contentType: "image/png",
-      upsert: true,
-    });
-
-  if (uploadError) {
-    throw uploadError;
-  }
-
-  const { data } = supabaseClient.storage.from(SUPABASE_FLOWERS_BUCKET).getPublicUrl(filePath);
-  return data.publicUrl;
-}
-
-async function removePendingImage(flowerRecord) {
-  if (!supabaseClient) {
-    return;
-  }
-
-  const { error } = await supabaseClient.storage
-    .from(SUPABASE_FLOWERS_BUCKET)
-    .remove([`pending/${flowerRecord.id}.png`]);
-
-  if (error) {
-    console.warn("Could not remove the pending flower image.", error);
-  }
-}
-
-async function insertFlowerRow(flowerRecord, imageUrl) {
-  if (!supabaseClient) {
-    return flowerRecord;
-  }
-
-  const payload = {
-    id: flowerRecord.id,
-    image_url: imageUrl,
-    created_at: flowerRecord.createdAt,
-    x: flowerRecord.x,
-    y: flowerRecord.y,
-    size: flowerRecord.size,
-    tilt: flowerRecord.tilt,
-  };
-
-  const { data, error } = await supabaseClient
-    .from("flowers")
-    .insert(payload)
-    .select()
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  return normalizeFlowerRecord(data);
-}
-
 // On phones the garden sits above the canvas, out of view, so bring it back to show the new flower.
 function showPlantedFlower() {
   const bounds = plantedFlowersLayer.getBoundingClientRect();
@@ -591,6 +500,39 @@ function showPlantedFlower() {
       behavior: prefersReducedMotion.matches ? "instant" : "smooth",
     });
   }
+}
+
+// The backend checks the drawing with the classifier and, only if it's a flower, saves it to
+// the shared garden. Browsers can't write to Supabase themselves, so nothing skips the check.
+// Without Supabase or a backend configured, flowers are only planted locally.
+async function plantOnServer(flowerRecord) {
+  const apiUrl = window.CLASSIFIER_API_URL;
+
+  if (!supabaseClient || !apiUrl) {
+    return { label: "unclassified", flower: flowerRecord };
+  }
+
+  const response = await fetch(`${apiUrl}/plant`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      image: flowerRecord.imageUrl,
+      x: flowerRecord.x,
+      y: flowerRecord.y,
+      size: flowerRecord.size,
+      tilt: flowerRecord.tilt,
+    }),
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(result.error ?? `HTTP ${response.status}`);
+  }
+
+  return {
+    label: result.label,
+    flower: result.flower ? normalizeFlowerRecord(result.flower) : null,
+  };
 }
 
 async function plantFlowerPatch() {
@@ -620,19 +562,7 @@ async function plantFlowerPatch() {
   }
 
   try {
-    // Nothing is kept until the classifier has looked at it. CLIP needs a public URL
-    // (it reads data URLs as text), so it sees a temporary copy that's deleted right after.
-    const pendingImageUrl = await uploadFlowerImage(localFlowerRecord, "pending");
-
-    classifier?.queueSketchForClassification({
-      imageUrl: pendingImageUrl,
-      brushColor: activeBrushColor,
-      plantedFlowerCount: allFlowers.length,
-      flowerId: localFlowerRecord.id,
-    });
-    const job = await classifier?.classifyLatestSketch();
-    const label = job ? job.result?.label : "unclassified";
-    await removePendingImage(localFlowerRecord);
+    const { label, flower } = await plantOnServer(localFlowerRecord);
 
     if (label === "SECRET_GARDEN") {
       showPanelMessage("Hey! That's inappropriate");
@@ -644,22 +574,13 @@ async function plantFlowerPatch() {
       return;
     }
 
-    if (label !== "ACCEPT" && label !== "unclassified") {
+    if ((label !== "ACCEPT" && label !== "unclassified") || !flower) {
       showPanelMessage("Couldn't check that drawing, try again");
       return;
     }
 
-    const uploadedImageUrl = await uploadFlowerImage(localFlowerRecord);
-    const flowerRecord = { ...localFlowerRecord, imageUrl: uploadedImageUrl };
-    const savedFlowerRecord = await insertFlowerRow(flowerRecord, uploadedImageUrl);
-    const mergedFlowerRecord = {
-      ...flowerRecord,
-      ...savedFlowerRecord,
-      imageUrl: uploadedImageUrl,
-    };
-
-    addFlowerToVisibleGarden(mergedFlowerRecord);
-    upsertFlowerIntoAllFlowers(mergedFlowerRecord);
+    addFlowerToVisibleGarden(flower);
+    upsertFlowerIntoAllFlowers(flower);
 
     if (canvasStatus) {
       canvasStatus.textContent = `Planted ${allFlowers.length} flower${allFlowers.length === 1 ? "" : "s"}`;
@@ -809,17 +730,6 @@ loadInitialFlowers();
 // It has no route here, so the reply is ignored; no-cors keeps the console quiet.
 if (window.CLASSIFIER_API_URL) {
   fetch(window.CLASSIFIER_API_URL, { mode: "no-cors" }).catch(() => {});
-}
-
-if (typeof classifier?.subscribe === "function") {
-  classifier.subscribe(({ eventName, detail: job }) => {
-    if (eventName === "complete") {
-      console.log("Classification:", job.result);
-    }
-    if (eventName === "failed") {
-      console.warn("Classification failed for job", job.id, job.result?.errorMessage);
-    }
-  });
 }
 
 for (const swatch of swatches) {
