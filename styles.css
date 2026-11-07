@@ -256,6 +256,19 @@ button, a {
 .pill-button--plant:hover .sprout-leaf,
 .pill-button--plant:focus-visible .sprout-leaf { transform: none; }
 
+/* See flower gallery: hand-drawn eyes that watch the cursor (see app.js). */
+.pill-button--gallery { padding-left: 14px; }
+.gallery-eyes { width: 26px; height: 20px; }
+.eye-sketch { stroke-width: 1.2; opacity: 0.85; }
+
+.pupil {
+  fill: #0c0908;
+  stroke: none;
+  /* At rest the eyes glance left. JS moves them when the cursor is near. */
+  transform: translate(var(--look-x, -4px), var(--look-y, -1px));
+  transition: transform 180ms ease-out;
+}
+
 .panel-actions {
   display: flex;
   flex-wrap: wrap;
@@ -490,6 +503,7 @@ button, a {
   .garden-island { animation: none; }
   .sprout-leaf { transition: none; }
   .nav-pill--back.is-visible { animation: none; }
+  .pupil { transition: none; }
 }
 
 /* ── Responsive ──────────────────────────────────────────────────────────── */

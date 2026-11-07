@@ -486,22 +486,6 @@ function createLocalFlowerRecord(imageUrl) {
   };
 }
 
-// On phones the garden sits above the canvas, out of view, so bring it back to show the new flower.
-function showPlantedFlower() {
-  const bounds = plantedFlowersLayer.getBoundingClientRect();
-  const isFullyInView = bounds.top >= 0 && bounds.bottom <= window.innerHeight;
-
-  if (!isFullyInView) {
-    // scrollIntoView ignores this absolutely positioned layer in Chrome, so center it by hand.
-    const centeredTop = window.scrollY + bounds.top - (window.innerHeight - bounds.height) / 2;
-    window.scrollTo({
-      top: Math.max(0, centeredTop),
-      // "auto" would still be smooth: the page sets scroll-behavior: smooth.
-      behavior: prefersReducedMotion.matches ? "instant" : "smooth",
-    });
-  }
-}
-
 // The backend checks the drawing with the classifier and, only if it's a flower, saves it to
 // the shared garden. Browsers can't write to Supabase themselves, so nothing skips the check.
 // Without Supabase or a backend configured, flowers are only planted locally.
@@ -585,7 +569,6 @@ async function plantFlowerPatch() {
     if (canvasStatus) {
       canvasStatus.textContent = `Planted ${allFlowers.length} flower${allFlowers.length === 1 ? "" : "s"}`;
     }
-    showPlantedFlower();
   } catch (error) {
     console.error("Failed to plant flower.", error);
     showPanelMessage("Couldn't plant that flower, try again");
@@ -759,6 +742,60 @@ resetCanvasButton?.addEventListener("click", () => {
 plantFlowerButton?.addEventListener("click", () => {
   plantFlowerPatch();
 });
+
+// The gallery button's eyes watch the cursor, but only while it's near the button.
+const eyesButton = document.querySelector("[data-eyes-button]");
+const eyePupils = eyesButton ? [...eyesButton.querySelectorAll("[data-pupil]")] : [];
+const EYE_FOLLOW_RADIUS = 140;
+const PUPIL_RANGE = { x: 4.5, y: 7 };
+
+function distanceToRect(x, y, rect) {
+  const dx = Math.max(rect.left - x, 0, x - rect.right);
+  const dy = Math.max(rect.top - y, 0, y - rect.bottom);
+  return Math.hypot(dx, dy);
+}
+
+function lookAt(x, y) {
+  for (const pupil of eyePupils) {
+    // Measure from the eye outline, which stays put while the pupil moves.
+    const eye = pupil.previousElementSibling.previousElementSibling.getBoundingClientRect();
+    const dx = x - (eye.left + eye.width / 2);
+    const dy = y - (eye.top + eye.height / 2);
+    const distance = Math.hypot(dx, dy) || 1;
+    // Pupils reach the edge of the eye once the cursor is ~60px away.
+    const reach = Math.min(1, distance / 60);
+
+    pupil.style.setProperty("--look-x", `${(dx / distance) * reach * PUPIL_RANGE.x}px`);
+    pupil.style.setProperty("--look-y", `${(dy / distance) * reach * PUPIL_RANGE.y}px`);
+  }
+}
+
+function restEyes() {
+  for (const pupil of eyePupils) {
+    pupil.style.removeProperty("--look-x");
+    pupil.style.removeProperty("--look-y");
+  }
+}
+
+if (eyesButton) {
+  document.addEventListener("pointermove", (event) => {
+    if (prefersReducedMotion.matches) {
+      return;
+    }
+
+    const nearButton =
+      distanceToRect(event.clientX, event.clientY, eyesButton.getBoundingClientRect()) <=
+      EYE_FOLLOW_RADIUS;
+
+    if (nearButton) {
+      lookAt(event.clientX, event.clientY);
+    } else {
+      restEyes();
+    }
+  });
+
+  document.addEventListener("pointerleave", restEyes);
+}
 
 // Back's arrow: a little swirl at rest that unwinds into a long, slightly wobbly line on hover.
 // Both shapes are the same four curves (start point + 4 × [control, control, end]), so every
