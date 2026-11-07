@@ -3,6 +3,7 @@ import math
 import uuid
 import base64
 import binascii
+import threading
 import httpx
 import replicate
 from flask import Flask, request, jsonify
@@ -99,19 +100,34 @@ def softmax(values: list[float]) -> list[float]:
     return [e / total for e in exps]
 
 
+# The prompts never change, so their embeddings are kept after the first classification
+# and later calls only send the image (1 input instead of 26), which makes them faster.
+prompt_embeddings: list[list[float]] | None = None
+
+
 def classify_image(image_url: str) -> dict:
+    global prompt_embeddings
+
     # The model only embeds http(s) URLs as images; anything else is embedded as text.
-    inputs_str = "\n".join([image_url] + [text for _, text in ALL_PROMPTS])
+    inputs = [image_url]
+    if prompt_embeddings is None:
+        inputs += [text for _, text in ALL_PROMPTS]
 
     output = replicate.run(
         REPLICATE_MODEL,
-        input={"inputs": inputs_str},
+        input={"inputs": "\n".join(inputs)},
     )
 
+    if len(output) != len(inputs):
+        raise RuntimeError(f"CLIP returned {len(output)} embeddings for {len(inputs)} inputs")
+
     image_embedding = output[0]["embedding"]
+    if prompt_embeddings is None:
+        prompt_embeddings = [item["embedding"] for item in output[1:]]
+
     similarities = [
-        cosine_similarity(image_embedding, output[i + 1]["embedding"])
-        for i in range(len(ALL_PROMPTS))
+        cosine_similarity(image_embedding, prompt_embedding)
+        for prompt_embedding in prompt_embeddings
     ]
     probs = softmax([CLIP_LOGIT_SCALE * sim for sim in similarities])
 
@@ -150,7 +166,28 @@ def upload_image(path: str, png: bytes) -> str:
         timeout=30,
     )
     response.raise_for_status()
+    return public_url(path)
+
+
+def public_url(path: str) -> str:
     return f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET}/{path}"
+
+
+def move_image(source: str, destination: str) -> str:
+    # Moving within the bucket is one quick call, instead of uploading the same bytes again.
+    response = httpx.post(
+        f"{SUPABASE_URL}/storage/v1/object/move",
+        json={"bucketId": BUCKET, "sourceKey": source, "destinationKey": destination},
+        headers=supabase_headers(),
+        timeout=30,
+    )
+    response.raise_for_status()
+    return public_url(destination)
+
+
+def remove_image_later(path: str) -> None:
+    # Nobody waits on cleanup, so it runs after the response is on its way.
+    threading.Thread(target=remove_image, args=(path,), daemon=True).start()
 
 
 def remove_image(path: str) -> None:
@@ -228,18 +265,22 @@ def plant():
     pending_path = f"pending/{flower_id}.png"
 
     try:
-        # CLIP reads images from a public URL, so it looks at a temporary copy that's removed after.
+        # CLIP reads images from a public URL, so it looks at a temporary copy. Accepted flowers
+        # are moved into flowers/; every other copy is removed.
         pending_url = upload_image(pending_path, png)
+        moved = False
         try:
             scores = classify_image(pending_url)
+            label = determine_label(scores)
+            if label != "ACCEPT":
+                return jsonify({"label": label, "scores": scores})
+
+            image_url = move_image(pending_path, f"flowers/{flower_id}.png")
+            moved = True
         finally:
-            remove_image(pending_path)
+            if not moved:
+                remove_image_later(pending_path)
 
-        label = determine_label(scores)
-        if label != "ACCEPT":
-            return jsonify({"label": label, "scores": scores})
-
-        image_url = upload_image(f"flowers/{flower_id}.png", png)
         flower = insert_flower({"id": flower_id, "image_url": image_url, **placement})
     except Exception as exc:
         print("Planting error:", exc)
