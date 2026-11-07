@@ -1,4 +1,5 @@
 import os
+import re
 import math
 import replicate
 from flask import Flask, request, jsonify
@@ -65,6 +66,12 @@ FLOWER_MIN_PROB = 0.8
 # A plain circle reached 0.6 "inappropriate", so require a clearer signal.
 INAPPROPRIATE_MIN_PROB = 0.75
 
+# Only the garden's own temporary uploads may be classified, so the endpoint can't be used to
+# run CLIP on arbitrary images (or to make the model fetch arbitrary URLs).
+PENDING_IMAGE_URL = re.compile(
+    r"^https://[a-z0-9]+\.supabase\.co/storage/v1/object/public/flower-images/pending/[0-9a-f-]+\.png$"
+)
+
 REPLICATE_MODEL = "andreasjansson/clip-features:75b33f253f7714a281ad3e9b28f63e3232d583716ef6718f2e46641077ea040a"
 
 
@@ -127,8 +134,8 @@ def classify():
 
     image_url: str = body["imageUrl"]
 
-    if not image_url.startswith(("http://", "https://")):
-        return jsonify({"error": "imageUrl must be a public http(s) URL"}), 400
+    if not isinstance(image_url, str) or not PENDING_IMAGE_URL.fullmatch(image_url):
+        return jsonify({"error": "imageUrl must be a pending garden upload"}), 400
 
     token = os.environ.get("REPLICATE_API_TOKEN", "")
     if not token or token == "r8_YourTokenHere":
@@ -138,7 +145,7 @@ def classify():
         scores = classify_image(image_url)
     except Exception as exc:
         print("Replicate error:", exc)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Classification failed"}), 500
 
     label = determine_label(scores)
 

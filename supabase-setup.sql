@@ -34,10 +34,13 @@ for insert
 to anon, authenticated
 with check (true);
 
-insert into storage.buckets (id, name, public)
-values ('flower-images', 'flower-images', true)
+-- Small PNG drawings only, so the public bucket can't be used to host other files.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('flower-images', 'flower-images', true, 1048576, array['image/png'])
 on conflict (id) do update
-set public = excluded.public;
+set public = excluded.public,
+    file_size_limit = excluded.file_size_limit,
+    allowed_mime_types = excluded.allowed_mime_types;
 
 drop policy if exists "Public flower image read access" on storage.objects;
 create policy "Public flower image read access"
@@ -59,4 +62,7 @@ create policy "Public flower image uploads"
 on storage.objects
 for insert
 to anon, authenticated
-with check (bucket_id = 'flower-images');
+with check (
+  bucket_id = 'flower-images'
+  and (name like 'pending/%.png' or name like 'flowers/%.png')
+);
